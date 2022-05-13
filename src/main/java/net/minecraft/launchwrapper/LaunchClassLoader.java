@@ -1,5 +1,13 @@
 package net.minecraft.launchwrapper;
 
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import shaded.org.mutabilitydetector.asm.NonClassloadingClassWriter;
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.tree.ClassNode;
+
 import java.io.*;
 import java.net.JarURLConnection;
 import java.net.URL;
@@ -14,9 +22,6 @@ import java.util.jar.Attributes.Name;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
-
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
 
 public class LaunchClassLoader extends URLClassLoader {
     public static final int BUFFER_SIZE = 1 << 12;
@@ -41,6 +46,8 @@ public class LaunchClassLoader extends URLClassLoader {
     private static final boolean DEBUG = Boolean.parseBoolean(System.getProperty("legacy.debugClassLoading", "false"));
     private static final boolean DEBUG_FINER = DEBUG && Boolean.parseBoolean(System.getProperty("legacy.debugClassLoadingFiner", "false"));
     private static final boolean DEBUG_SAVE = DEBUG && Boolean.parseBoolean(System.getProperty("legacy.debugClassLoadingSave", "false"));
+    private static final boolean COMPUTE_FRAMES = Boolean.parseBoolean(System.getProperty("legacy.computeFrames", "true"));
+
     private static File tempFolder = null;
 
     public LaunchClassLoader(URL[] sources) {
@@ -167,11 +174,12 @@ public class LaunchClassLoader extends URLClassLoader {
                 }
             }
 
-            final byte[] transformedClass = runTransformers(untransformedName, transformedName, getClassBytes(untransformedName));
+            byte[] transformedClass = runTransformers(untransformedName, transformedName, getClassBytes(untransformedName));
             if (DEBUG_SAVE) {
                 saveTransformedClass(transformedClass, transformedName);
             }
-
+            if (transformedName.startsWith("net.minecraft") && COMPUTE_FRAMES)
+                transformedClass = tryComputeFrames(transformedClass);
             final CodeSource codeSource = urlConnection == null ? null : new CodeSource(urlConnection.getURL(), signers);
             final Class<?> clazz = defineClass(transformedName, transformedClass, 0, transformedClass.length, codeSource);
             cachedClasses.put(transformedName, clazz);
@@ -183,6 +191,19 @@ public class LaunchClassLoader extends URLClassLoader {
                 LogManager.getLogger("LaunchWrapper").log(Level.ERROR, "Exception encountered attempting classloading of %s", e);
             }
             throw new ClassNotFoundException(name, e);
+        }
+    }
+
+    public byte[] tryComputeFrames(byte[] clazz) {
+        try {
+            ClassNode cn = new ClassNode(Opcodes.ASM5);
+            ClassReader reader = new ClassReader(clazz);
+            reader.accept(cn, ClassReader.EXPAND_FRAMES);
+            ClassWriter cw = new NonClassloadingClassWriter(ClassWriter.COMPUTE_FRAMES, this);
+            cn.accept(cw);
+            return cw.toByteArray();
+        } catch (Throwable ignored) {
+            return clazz;
         }
     }
 
@@ -213,7 +234,7 @@ public class LaunchClassLoader extends URLClassLoader {
         }
     }
 
-    private String untransformName(final String name) {
+    public String untransformName(final String name) {
         if (renameTransformer != null) {
             return renameTransformer.unmapClassName(name);
         }
@@ -221,7 +242,7 @@ public class LaunchClassLoader extends URLClassLoader {
         return name;
     }
 
-    private String transformName(final String name) {
+    public String transformName(final String name) {
         if (renameTransformer != null) {
             return renameTransformer.remapClassName(name);
         }
@@ -258,7 +279,7 @@ public class LaunchClassLoader extends URLClassLoader {
         return null;
     }
 
-    private byte[] runTransformers(final String name, final String transformedName, byte[] basicClass) {
+    public byte[] runTransformers(final String name, final String transformedName, byte[] basicClass) {
         if (DEBUG_FINER) {
             LogWrapper.finest("Beginning transform of {%s (%s)} Start Length: %d", name, transformedName, (basicClass == null ? 0 : basicClass.length));
             for (final IClassTransformer transformer : transformers) {
