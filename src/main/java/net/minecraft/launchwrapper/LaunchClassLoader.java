@@ -56,6 +56,7 @@ public class LaunchClassLoader extends URLClassLoader {
 
         // classloader exclusions
         addClassLoaderExclusion("java.");
+        addClassLoaderExclusion("jdk.");
         addClassLoaderExclusion("sun.");
         addClassLoaderExclusion("org.lwjgl.");
         addClassLoaderExclusion("org.apache.logging.");
