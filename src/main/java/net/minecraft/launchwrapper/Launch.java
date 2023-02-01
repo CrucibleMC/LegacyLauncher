@@ -1,7 +1,5 @@
 package net.minecraft.launchwrapper;
 
-import java.net.MalformedURLException;
-import java.net.URL;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
@@ -20,6 +18,10 @@ import java.util.Set;
 
 import org.apache.logging.log4j.Level;
 
+/**
+ * WARNING FOR ANYONE TOUCHING THIS CLASS
+ * DO NOT ADD NEW METHODS TO IT
+ */
 public class Launch {
     private static final String DEFAULT_TWEAK = "net.minecraft.launchwrapper.VanillaTweaker";
     public static File minecraftHome;
@@ -37,28 +39,10 @@ public class Launch {
             final URLClassLoader ucl = (URLClassLoader) getClass().getClassLoader();
             classLoader = new LaunchClassLoader(ucl.getURLs());
         } else {
-            classLoader = new LaunchClassLoader(getURLs());
+            classLoader = new LaunchClassLoader(LaunchUtil.getURLs());
         }
         blackboard = new HashMap<String,Object>();
         Thread.currentThread().setContextClassLoader(classLoader);
-    }
-
-    private URL[] getURLs() {
-        String cp = System.getProperty("java.class.path");
-        String[] elements = cp.split(File.pathSeparator);
-        if (elements.length == 0) {
-            elements = new String[]{""};
-        }
-        URL[] urls = new URL[elements.length];
-        for (int i = 0; i < elements.length; i++) {
-            try {
-                URL url = new File(elements[i]).toURI().toURL();
-                urls[i] = url;
-            } catch (MalformedURLException ignore) {
-                // malformed file string or class path element does not exist
-            }
-        }
-        return urls;
     }
 
     private void launch(String[] args) {
